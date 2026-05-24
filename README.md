@@ -1,8 +1,6 @@
-﻿# Radogast — Context Drift Monitor
+﻿![radogast](images/radogast.png)
 
-<p align="center">
-  <img src="images/radogast.png" alt="Radogast" width="200"/>
-</p>
+# Radogast — Context Drift Monitor
 
 Universal static analyzer for AI agent sessions.
 
