@@ -1,0 +1,10 @@
+[
+  {"role": "user", "content": "Let's design a REST API for tracking visitor dwell time at a café. We need to record when each visitor enters and exits the establishment."},
+  {"role": "assistant", "content": "A visitor is defined as a person who enters and exits the establishment — we capture an entry event and exit event, both with timestamps. The session is the pair: entry.timestamp to exit.timestamp. The dwell time formula is: dwell = exit.timestamp - entry.timestamp in seconds."},
+  {"role": "user", "content": "What endpoints do we need?"},
+  {"role": "assistant", "content": "We need: POST /sessions — record a new visitor session with device_id, entry timestamp, exit timestamp. GET /sessions/stats — return average dwell time calculated as sum(exit-entry) / count(sessions)."},
+  {"role": "user", "content": "Have you heard the one about the soldier and the general?"},
+  {"role": "assistant", "content": "Ha, yes. A soldier walks up to a general and says..."},
+  {"role": "user", "content": "And then the sergeant said — that's not how you file a report!"},
+  {"role": "assistant", "content": "Classic army humor. Reminds me of boot camp stories."}
+]

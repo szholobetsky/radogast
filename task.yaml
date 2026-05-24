@@ -1,0 +1,24 @@
+goal: "develop REST API for visitor dwell time tracking at a café"
+
+key_terms: [REST, API, visitor, tracking, session, timestamp, dwell time]
+
+milestones:
+  - name: domain_understood
+    markers: [visitor, entry, exit, establishment]
+    evidence: "definition of visitor as entry+exit pair"
+  - name: api_designed
+    markers: [endpoint, POST, GET, response]
+    evidence: "at least one endpoint specified"
+  - name: calculation_specified
+    markers: [average, sum, count, formula, dwell]
+    evidence: "dwell time formula present"
+
+falsification:
+  critical_tests:
+    - "if visitor is never defined — problem not formulated"
+    - "if no dwell time formula — task unsolved"
+  minimum_evidence:
+    - at least one endpoint specification
+    - dwell time calculation formula
+
+out_of_scope: [authorization, billing, UI]

@@ -1,0 +1,13 @@
+Metadata-Version: 2.4
+Name: radogast
+Version: 0.1.0
+Summary: Universal context drift monitor for AI agent sessions
+Requires-Python: >=3.10
+Requires-Dist: click>=8.0
+Requires-Dist: mcp>=1.0
+Requires-Dist: numpy>=1.24
+Requires-Dist: pyyaml>=6.0
+Requires-Dist: rouge-score>=0.1.2
+Provides-Extra: embed
+Requires-Dist: sentence-transformers>=2.2.2; extra == "embed"
+Requires-Dist: torch>=2.0; extra == "embed"
