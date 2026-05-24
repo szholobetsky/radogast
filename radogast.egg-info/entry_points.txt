@@ -1,3 +1,0 @@
-[console_scripts]
-radogast = radogast.cli:main
-radogast-mcp = radogast.mcp_server:main
