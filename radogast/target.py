@@ -1,4 +1,4 @@
-"""Target schema: load from YAML, auto-derive from plain text prompt."""
+﻿"""Target schema: load from YAML, auto-derive from plain text prompt."""
 from __future__ import annotations
 import json
 import re
@@ -18,9 +18,8 @@ class Milestone:
 
 
 @dataclass
-class Falsification:
-    critical_tests: list[str] = field(default_factory=list)
-    minimum_evidence: list[str] = field(default_factory=list)
+class Verification:
+    mandatory_terms: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -29,7 +28,7 @@ class Target:
     key_terms: list[str] = field(default_factory=list)
     milestones: list[Milestone] = field(default_factory=list)
     marker_words: dict[str, list[str]] = field(default_factory=dict)
-    falsification: Falsification = field(default_factory=Falsification)
+    verification: Verification = field(default_factory=Verification)
     out_of_scope: list[str] = field(default_factory=list)
 
 
@@ -54,18 +53,19 @@ def load_target(path: str) -> Target:
         for m in data.get("milestones", [])
     ]
 
-    raw_f = data.get("falsification", {})
-    falsification = Falsification(
-        critical_tests=raw_f.get("critical_tests", []),
-        minimum_evidence=raw_f.get("minimum_evidence", []),
-    )
+    raw_f = data.get("verification", [])
+    if isinstance(raw_f, list):
+        mandatory_terms = raw_f
+    else:
+        mandatory_terms = raw_f.get("mandatory_terms", [])
+    verification = Verification(mandatory_terms=mandatory_terms)
 
     return Target(
         goal=data.get("goal", ""),
         key_terms=data.get("key_terms", []),
         milestones=milestones,
         marker_words=data.get("marker_words", {}),
-        falsification=falsification,
+        verification=verification,
         out_of_scope=data.get("out_of_scope", []),
     )
 
@@ -110,20 +110,12 @@ def derive_target(prompt_text: str) -> Target:
 
     goal = text.split("\n")[0][:120]
 
-    falsification = Falsification(
-        critical_tests=[
-            f"if result contains no mention of '{t}' — goal not met"
-            for t in key_terms[:3]
-        ],
-        minimum_evidence=[
-            f"at least one concrete statement about {key_terms[0]}" if key_terms else "task addressed"
-        ],
-    )
+    verification = Verification(mandatory_terms=key_terms[:3])
 
     return Target(
         goal=goal,
         key_terms=key_terms,
-        falsification=falsification,
+        verification=verification,
     )
 
 
@@ -138,11 +130,8 @@ def target_to_yaml(target: Target) -> str:
         ]
     if target.marker_words:
         data["marker_words"] = target.marker_words
-    if target.falsification.critical_tests or target.falsification.minimum_evidence:
-        data["falsification"] = {
-            "critical_tests": target.falsification.critical_tests,
-            "minimum_evidence": target.falsification.minimum_evidence,
-        }
+    if target.verification.mandatory_terms:
+        data["verification"] = target.verification.mandatory_terms
     if target.out_of_scope:
         data["out_of_scope"] = target.out_of_scope
     return yaml.dump(data, allow_unicode=True, sort_keys=False)
@@ -171,14 +160,14 @@ def load_messages(source: str) -> list[dict]:
     #   :::agent: claude
     #   :::date: 2026-05-19
     #   ---
-    #   [user] text...
-    #   [assistant] text...
+    #   [user] text...   OR   === user ===\ntext...  (1bcoder ctx format)
     if raw.startswith(":::") or "\n---\n" in raw:
         body = raw.split("\n---\n", 1)[-1]
         messages = []
         role = "user"
         buf: list[str] = []
         for line in body.splitlines():
+            # [user] / [assistant] — yasna claude/aider/... format
             m = re.match(r'^\[(user|assistant|human|model)\]\s*(.*)', line, re.IGNORECASE)
             if m:
                 if buf:
@@ -188,6 +177,32 @@ def load_messages(source: str) -> list[dict]:
                 role = "assistant" if raw_role in ("assistant", "model") else "user"
                 if m.group(2):
                     buf.append(m.group(2))
+                continue
+            # === user === / === assistant === — 1bcoder ctx format
+            m2 = re.match(r'^===\s*(user|assistant|system)\s*===\s*$', line, re.IGNORECASE)
+            if m2:
+                if buf:
+                    messages.append({"role": role, "content": "\n".join(buf).strip()})
+                    buf = []
+                role = "assistant" if m2.group(1).lower() == "assistant" else "user"
+                continue
+            buf.append(line)
+        if buf:
+            messages.append({"role": role, "content": "\n".join(buf).strip()})
+        return [m for m in messages if m["content"].strip()]
+
+    # 1bcoder ctx format without yasna wrapper (raw ctx file passed directly)
+    if "=== user ===" in raw or "=== assistant ===" in raw:
+        messages = []
+        role = "user"
+        buf: list[str] = []
+        for line in raw.splitlines():
+            m = re.match(r'^===\s*(user|assistant|system)\s*===\s*$', line, re.IGNORECASE)
+            if m:
+                if buf:
+                    messages.append({"role": role, "content": "\n".join(buf).strip()})
+                    buf = []
+                role = "assistant" if m.group(1).lower() == "assistant" else "user"
             else:
                 buf.append(line)
         if buf:

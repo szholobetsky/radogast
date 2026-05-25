@@ -27,25 +27,66 @@ nanocoder — any tool that can export message history as JSON.
 ## Install
 
 ```bash
-pip install -e .
+pip install radogast
 # with embedding support (recommended):
+pip install "radogast[embed]"
+```
+
+For development:
+```bash
+pip install -e .
 pip install -e ".[embed]"
 ```
 
-## Quick start
+## Dependencies
+
+radogast works standalone — the only required dependencies are `click`, `numpy`, `pyyaml`,
+and `rouge-score`. Embedding-based drift detection requires the `[embed]` extra
+(`sentence-transformers`); without it, radogast falls back to marker-word analysis only.
+
+**[yasna](https://github.com/szholobetsky/yasna) is strongly recommended.**
+Without it, radogast can still analyze sessions — but you have to know the exact path to
+each session file yourself. Every agent stores sessions in a different place and format.
+yasna solves this: it indexes sessions from all agents into one searchable store and
+radogast reads from there automatically.
 
 ```bash
-# 1. Auto-generate a target from your task description
-radogast target derive "develop REST API for visitor tracking at a café" -o task.yaml
+pip install yasna
+```
 
-# 2. Analyze a session
-cat session.json | radogast analyze --target task.yaml
+Without yasna, radogast is a scalpel. With yasna, it becomes part of a workflow.
 
-# 3. Watch a directory for live updates
-radogast watch --target task.yaml --dir ~/.continue/history/
+## Quick start
 
-# 4. Start MCP server (connects to Claude, Continue.dev, Codex CLI)
-radogast-mcp
+### With yasna (recommended)
+
+```bash
+# 1. Index sessions from all agents (Claude, 1bcoder, aider, Gemini, opencode, ...)
+yasna index
+
+# 2. Define the task you are working on
+radogast init
+
+# 3. Watch — yasna index runs automatically before each cycle
+radogast watch
+```
+
+radogast will pick up sessions from Claude Code, 1bcoder, aider, Gemini CLI, opencode,
+Continue.dev, and any other agent yasna supports — no paths needed.
+
+### Without yasna
+
+```bash
+# 1. Define the task
+radogast init
+
+# 2. Point radogast at the session file directly
+radogast analyze --input ~/.claude/projects/my-project/session.jsonl
+
+# 3. Or watch a specific agent's directory
+radogast watch --dir ~/.continue/history/
+radogast watch --dir ~/.aider/
+radogast watch --dir ~/.1bcoder/autosave/
 ```
 
 ## Target YAML format
@@ -63,12 +104,7 @@ milestones:
     markers: [endpoint, POST, GET, response]
     evidence: "at least one endpoint with schema"
 
-falsification:
-  critical_tests:
-    - "if visitor is never defined — problem not formulated"
-    - "if no formula present — task unsolved"
-  minimum_evidence:
-    - at least one endpoint specification
+verification: [visitor, REST, endpoint]
 
 out_of_scope: [authorization, billing, UI]
 ```
@@ -81,6 +117,7 @@ drift_threshold_deg: 40       # alert above this angle
 bias_threshold: 3.0           # term imbalance alert
 embedding_model: "BAAI/bge-small-en-v1.5"   # fast, 22MB
 hybrid: true                  # marker words + embeddings both
+trend_segments: 7             # sparkline bars per term
 ```
 
 ## MCP tools

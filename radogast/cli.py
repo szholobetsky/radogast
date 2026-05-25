@@ -61,7 +61,9 @@ def _print_report(report: RadogastReport, target_goal: str, fmt: str):
             "rouge1": report.rouge1,
             "balance": report.balance,
             "glossary": {k: v for k, v in report.glossary.items() if v},
-            "falsification_fails": report.falsification_fails,
+            "verification_fails": report.verification_fails,
+            "oos_hits": report.oos_hits,
+            "oos_recent": report.oos_recent,
             "suggestions": report.suggestions,
         }
         click.echo(json.dumps(out, ensure_ascii=False, indent=2))
@@ -89,12 +91,17 @@ def _print_report(report: RadogastReport, target_goal: str, fmt: str):
     # coverage
     click.echo(f"\nTERM COVERAGE  ({len([v for v in report.term_coverage.values() if v=='defined'])}"
                f"/{len(report.term_coverage)} defined)  ROUGE-1={report.rouge1:.2f}")
+    _TREND_ARROW = {"growing": "↑", "declining": "↓", "stable": "→",
+                    "peak_early": "↘", "peak_late": "↗", "absent": " "}
     for term, status in report.term_coverage.items():
         c = _COV_COLOR.get(status, "")
-        freq = report.balance["freqs"].get(term, 0)
-        bar = _bar(min(freq / 10, 1.0))
+        tr = report.term_trends.get(term, {})
+        spark = tr.get("spark", "·····")
+        trend = tr.get("trend", "")
+        arrow = _TREND_ARROW.get(trend, " ")
+        tc = _GRN if trend == "growing" else _RED if trend in ("declining", "peak_early") else _DIM
         icon = _TICK if status == "defined" else _WAVE if status == "mentioned" else _CROSS
-        click.echo(f"  {c}{icon}{_R} {term:<22} {_DIM}{bar}{_R}  {c}{status}{_R}")
+        click.echo(f"  {c}{icon}{_R} {term:<20} {_DIM}{spark}{_R} {tc}{arrow}{_R}  {c}{status}{_R}")
 
     # balance
     bias = report.balance["bias"]
@@ -110,11 +117,59 @@ def _print_report(report: RadogastReport, target_goal: str, fmt: str):
             snippet = (defn[:90] + "…") if defn and len(defn) > 90 else defn
             click.echo(f"  {term}: {_DIM}{snippet}{_R}")
 
-    # falsification
-    if report.falsification_fails:
-        click.echo(f"\n{_RED}FAILS:{_R}")
-        for f in report.falsification_fails:
-            click.echo(f"  {_RED}{_CROSS}{_R} {f}")
+    # milestones tree
+    if report.milestone_trends:
+        click.echo(f"\nMILESTONES:")
+        for ms_name, mt in report.milestone_trends.items():
+            is_current = ms_name == report.active_milestone
+            cur_tag = f"  {_GRN}<- current{_R}" if is_current else ""
+            ms_c = _GRN if is_current else _DIM
+            click.echo(f"  {ms_c}{ms_name}{_R}{cur_tag}")
+            marker_items = list(mt.get("markers", {}).items())
+            for idx, (marker, mtr) in enumerate(marker_items):
+                is_last = idx == len(marker_items) - 1
+                branch = _u("└─", "+-") if is_last else _u("├─", "+-")
+                indent = _u("   ", "   ") if is_last else _u("│  ", "|  ")
+                spark = mtr.get("spark", "·····")
+                trend = mtr.get("trend", "absent")
+                active_marker = mtr.get("recent", 0) > 0
+                if trend == "absent":
+                    status = f"{_DIM}absent{_R}"
+                elif active_marker:
+                    status = f"{_GRN}active{_R}"
+                else:
+                    status = f"{_DIM}seen{_R}"
+                click.echo(f"   {branch} {marker:<18} {_DIM}{spark}{_R}  {status}")
+
+    # verification
+    if report.verification_fails or report.verification_trends:
+        click.echo(f"\nVERIFICATION:")
+        for term in (report.verification_trends or {}):
+            vt = report.verification_trends[term]
+            spark = vt.get("spark", "·····")
+            trend = vt.get("trend", "")
+            arrow = _TREND_ARROW.get(trend, " ")
+            failed = term in report.verification_fails
+            c = _RED if failed else _GRN
+            icon = _CROSS if failed else _TICK
+            tc = _RED if trend in ("declining", "peak_early") else _GRN if trend == "growing" else _DIM
+            click.echo(f"  {c}{icon}{_R} {term:<20} {_DIM}{spark}{_R} {tc}{arrow}{_R}"
+                       + (f"  {_RED}ABSENT{_R}" if failed else ""))
+
+    # out of scope
+    if report.oos_hits:
+        click.echo(f"\n{_YEL}OUT OF SCOPE:{_R}")
+        for term, count in report.oos_hits.items():
+            ot = report.oos_trends.get(term, {})
+            spark = ot.get("spark", "·····")
+            trend = ot.get("trend", "")
+            arrow = _TREND_ARROW.get(trend, " ")
+            if trend == "declining":
+                click.echo(f"  {_DIM}~ {term:<20} {spark} {arrow}  fading{_R}")
+            elif term in report.oos_recent or trend == "growing":
+                click.echo(f"  {_RED}! {term:<20} {spark} {arrow}  GROWING{_R}")
+            else:
+                click.echo(f"  {_YEL}~ {term:<20} {spark} {arrow}{_R}")
 
     # suggestions
     if report.suggestions:
@@ -138,7 +193,7 @@ def main():
 @click.option("--dir", "init_dir", default=".", help="Directory to initialize (default: cwd).")
 def init_cmd(init_dir):
     """Create .radogast/task.yaml by answering a few questions."""
-    from radogast.target import Target, Milestone, Falsification, target_to_yaml
+    from radogast.target import Target, Milestone, Verification, target_to_yaml
 
     out_dir = Path(init_dir).resolve() / ".radogast"
     task_file = out_dir / "task.yaml"
@@ -178,19 +233,15 @@ def init_cmd(init_dir):
             markers = [m.strip() for m in raw_markers.split(",") if m.strip()] if raw_markers else []
             milestones.append(Milestone(name=ms_name, markers=markers))
 
-    # ── falsification ─────────────────────────────────────────────────────────
-    click.echo(f"\n  Falsification: what would PROVE this goal was NOT met?")
-    click.echo(f"  (comma-separated conditions, or press Enter to auto-generate from key terms)")
-    raw_f = click.prompt("  Critical tests", default="").strip()
+    # ── verification ─────────────────────────────────────────────────────────
+    click.echo(f"\n  Verification: terms that MUST appear in the context for the goal to be met.")
+    click.echo(f"  (comma-separated, or press Enter to use key terms)")
+    raw_f = click.prompt("  Mandatory terms", default="").strip()
     if raw_f:
-        critical_tests = [t.strip() for t in raw_f.split(",") if t.strip()]
+        mandatory_terms = [t.strip() for t in raw_f.split(",") if t.strip()]
     else:
-        critical_tests = [
-            f"result contains no mention of '{t}'" for t in key_terms[:3]
-        ]
-        click.echo(f"  auto-generated: {'; '.join(critical_tests)}")
-
-    min_evidence = [f"at least one concrete statement about {key_terms[0]}"] if key_terms else ["task addressed"]
+        mandatory_terms = key_terms[:3]
+        click.echo(f"  using: {', '.join(mandatory_terms)}")
 
     # ── out of scope ──────────────────────────────────────────────────────────
     click.echo(f"\n  Out of scope: topics that should NOT appear / drift into.")
@@ -203,7 +254,7 @@ def init_cmd(init_dir):
         goal=goal,
         key_terms=key_terms,
         milestones=milestones,
-        falsification=Falsification(critical_tests=critical_tests, minimum_evidence=min_evidence),
+        verification=Verification(mandatory_terms=mandatory_terms),
         out_of_scope=out_of_scope,
     )
 
@@ -330,20 +381,25 @@ def analyze_cmd(target_path, input_path, agent, fmt, cfg_path):
     report = analyze(messages, target, cfg)
     _print_report(report, target.goal, fmt)
 
-    if report.drift_status == "critical" or report.falsification_fails:
+    if report.drift_status == "critical" or report.verification_fails:
         sys.exit(2)
 
 
 @main.command()
 @click.option("--target", "-t", "target_path", default=None,
               help="Path to target YAML (default: .radogast/task.yaml).")
-@click.option("--dir", "-d", "watch_dir", required=True,
-              help="Directory to watch for session files.")
+@click.option("--dir", "-d", "watch_dir", default=None,
+              help="Directory to watch (default: ~/.yasna/index/ with auto yasna index).")
 @click.option("--interval", default=5, help="Poll interval in seconds.")
 @click.option("--format", "-f", "fmt", default="text",
               type=click.Choice(["text", "json"]))
 def watch(target_path, watch_dir, interval, fmt):
-    """Watch a directory for session updates and re-analyze on change."""
+    """Watch a directory for session updates and re-analyze on change.
+
+    Without --dir: uses ~/.yasna/index/ and runs 'yasna index' before each cycle.
+    With --dir: watches that directory as-is, no yasna index step.
+    """
+    import subprocess
     cfg = _cfg.load()
     if not target_path:
         found = _cfg.find_target()
@@ -353,14 +409,34 @@ def watch(target_path, watch_dir, interval, fmt):
         target_path = str(found)
         click.echo(f"[radogast] using target: {found}", err=True)
     target = load_target(target_path)
+
+    auto_yasna = watch_dir is None
+    if auto_yasna:
+        watch_dir = str(Path.home() / ".yasna" / "index")
+        click.echo(f"[radogast] mode: auto  (yasna index + {watch_dir})", err=True)
+    else:
+        click.echo(f"[radogast] mode: manual  ({watch_dir})", err=True)
+
     watch_path = Path(watch_dir)
+    watch_path.mkdir(parents=True, exist_ok=True)
     last_mtime: dict[Path, float] = {}
 
-    click.echo(f"[radogast] watching {watch_dir} every {interval}s — Ctrl+C to stop")
+    click.echo(f"[radogast] interval: {interval}s — Ctrl+C to stop", err=True)
     tick = 0
     _SPIN = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏" if _UTF8 else "-\\|/"
     try:
         while True:
+            if auto_yasna:
+                click.echo("\r  [1/2] yasna index...                    ", nl=False, err=True)
+                try:
+                    subprocess.run(["yasna", "index"], capture_output=True, timeout=30)
+                except FileNotFoundError:
+                    click.echo("\n[radogast] warning: yasna not found — skipping index step", err=True)
+                    auto_yasna = False
+                except subprocess.TimeoutExpired:
+                    click.echo("\n[radogast] warning: yasna index timed out", err=True)
+                click.echo("\r  [2/2] scanning sessions...              ", nl=False, err=True)
+
             changed = []
             for fpath in sorted(
                 list(watch_path.glob("**/*.json")) +
@@ -425,8 +501,8 @@ def target_validate(target_path):
             issues.append("missing: goal")
         if not t.key_terms:
             issues.append("warning: no key_terms")
-        if not t.falsification.critical_tests:
-            issues.append("warning: no falsification.critical_tests")
+        if not t.verification.mandatory_terms:
+            issues.append("warning: no verification.mandatory_terms")
         if issues:
             for i in issues:
                 click.echo(f"  {'✗' if i.startswith('missing') else '!'} {i}")

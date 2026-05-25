@@ -7,6 +7,7 @@ DRIFT_THRESHOLD_DEG: float = 40.0
 BIAS_THRESHOLD: float = 3.0
 EMBEDDING_MODEL: str = "BAAI/bge-small-en-v1.5"
 HYBRID: bool = True
+TREND_SEGMENTS: int = 7   # sparkline bars per term
 
 # Project-local radogast directory (created by `radogast init`)
 LOCAL_DIR = Path(".radogast")
@@ -20,6 +21,7 @@ def load() -> dict:
         "bias_threshold": BIAS_THRESHOLD,
         "embedding_model": EMBEDDING_MODEL,
         "hybrid": HYBRID,
+        "trend_segments": TREND_SEGMENTS,
     }
     for candidate in (
         Path.cwd() / ".radogast" / "config.yaml",

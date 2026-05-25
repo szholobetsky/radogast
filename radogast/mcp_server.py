@@ -45,7 +45,7 @@ def analyze_context(messages_json: str, target_yaml: str) -> str:
         "biased_toward": report.balance.get("biased_toward"),
         "glossary_found": sum(1 for v in report.glossary.values() if v),
         "glossary_total": len(report.glossary),
-        "falsification_fails": report.falsification_fails,
+        "verification_fails": report.verification_fails,
         "suggestions": report.suggestions,
     }, ensure_ascii=False, indent=2)
 

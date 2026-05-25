@@ -1,9 +1,10 @@
 ﻿"""Orchestrates all metrics and produces a RadogastReport."""
 from __future__ import annotations
+import re
 from dataclasses import dataclass, field
 
 from radogast.target import Target
-from radogast.metrics import coverage, drift, markers, balance, glossary
+from radogast.metrics import coverage, drift, markers, balance, glossary, trends
 
 
 @dataclass
@@ -23,8 +24,17 @@ class RadogastReport:
     balance: dict                   # freqs, bias, biased_toward
     # glossary
     glossary: dict[str, str | None]
-    # falsification
-    falsification_fails: list[str]
+    # verification
+    verification_fails: list[str]
+    verification_trends: dict[str, dict]  # term → {spark, trend, recent}
+    # out of scope
+    oos_hits: dict[str, int]        # term → total count in context
+    oos_recent: list[str]           # terms that appeared in last 3 messages
+    oos_trends: dict[str, dict]     # term → {spark, trend}
+    # key term trends
+    term_trends: dict[str, dict]    # term → {spark, trend, recent}
+    # milestone trends
+    milestone_trends: dict[str, dict]  # name → {spark, first_seg, last_seg, active}
     # output
     suggestions: list[str]
 
@@ -49,6 +59,7 @@ def analyze(
     hybrid: bool = cfg.get("hybrid", True)
     drift_thresh: float = float(cfg.get("drift_threshold_deg", 40.0))
     bias_thresh: float = float(cfg.get("bias_threshold", 3.0))
+    n_seg: int = int(cfg.get("trend_segments", 7))
 
     n_msg = len(contents)
     n_terms = len(target.key_terms)
@@ -97,23 +108,44 @@ def analyze(
     _step("glossary: extracting definitions...")
     gloss = glossary.extract_glossary(context_text, target.key_terms)
 
-    # ── falsification ─────────────────────────────────────────────────────────
-    fails = []
-    for test in target.falsification.critical_tests:
-        # heuristic: if the test references an absent term, flag it
-        for term in target.key_terms:
-            if term.lower() in test.lower() and cov.get(term) == "absent":
-                fails.append(test)
-                break
-    for req in target.falsification.minimum_evidence:
-        for term in target.key_terms:
-            if term.lower() in req.lower() and cov.get(term) == "absent":
-                fails.append(f"minimum evidence not met: {req}")
-                break
+    # ── trends ────────────────────────────────────────────────────────────────
+    _step("trends: computing sparklines...")
+    term_trends = {
+        term: trends.term_trend(contents, term, n_seg)
+        for term in target.key_terms
+    }
+    milestone_trends = {
+        ms.name: trends.milestone_trend(contents, ms.name, ms.markers, n_seg)
+        for ms in target.milestones
+    }
+
+    # ── verification ─────────────────────────────────────────────────────────
+    fails = [
+        term for term in target.verification.mandatory_terms
+        if cov.get(term, "absent") == "absent"
+    ]
+    verification_trends = {
+        term: trends.term_trend(contents, term, n_seg)
+        for term in target.verification.mandatory_terms
+    }
+
+    # ── out of scope ──────────────────────────────────────────────────────────
+    _step(f"out-of-scope: checking {len(target.out_of_scope)} terms...")
+    oos_hits = {}
+    oos_recent = []
+    oos_trends = {}
+    for term in target.out_of_scope:
+        t = trends.term_trend(contents, term, n_seg)
+        oos_trends[term] = t
+        if t["counts"] and sum(t["counts"]) > 0:
+            oos_hits[term] = sum(t["counts"])
+            if t["recent"] > 0:
+                oos_recent.append(term)
 
     # ── suggestions ───────────────────────────────────────────────────────────
     suggestions = _build_suggestions(
-        cov, bal, drift_result, vote_result, trans_warnings, bias_thresh
+        cov, bal, drift_result, vote_result, trans_warnings, bias_thresh,
+        oos_hits, oos_recent, oos_trends,
     )
 
     return RadogastReport(
@@ -127,12 +159,19 @@ def analyze(
         rouge1=r1,
         balance=bal,
         glossary=gloss,
-        falsification_fails=list(dict.fromkeys(fails)),
+        verification_fails=list(dict.fromkeys(fails)),
+        verification_trends=verification_trends,
+        oos_hits=oos_hits,
+        oos_recent=oos_recent,
+        oos_trends=oos_trends,
+        term_trends=term_trends,
+        milestone_trends=milestone_trends,
         suggestions=suggestions,
     )
 
 
-def _build_suggestions(cov, bal, drift_result, vote_result, trans_warnings, bias_thresh) -> list[str]:
+def _build_suggestions(cov, bal, drift_result, vote_result, trans_warnings, bias_thresh,
+                       oos_hits=None, oos_recent=None, oos_trends=None) -> list[str]:
     s = []
     absent = [t for t, st in cov.items() if st == "absent"]
     if absent:
@@ -152,4 +191,13 @@ def _build_suggestions(cov, bal, drift_result, vote_result, trans_warnings, bias
             f"drift {drift_result['angle']}° — CRITICAL: context has diverged significantly from target"
         )
     s.extend(trans_warnings)
+    for term, count in (oos_hits or {}).items():
+        t = (oos_trends or {}).get(term, {})
+        trend = t.get("trend", "")
+        if trend == "declining":
+            continue  # was mentioned but fading — no alert
+        if term in (oos_recent or []) or trend == "growing":
+            s.append(f"OUT-OF-SCOPE '{term}' — {count}x, trend: {trend} — refocus away from this topic")
+        else:
+            s.append(f"out-of-scope '{term}' — {count}x in context")
     return s
