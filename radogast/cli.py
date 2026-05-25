@@ -79,7 +79,7 @@ def _print_report(report: RadogastReport, target_goal: str, fmt: str):
     if report.drift_angle is not None:
         click.echo(f"DRIFT:    {dc}{report.drift_angle:5.1f}°  {ds}{_R}")
     else:
-        click.echo(f"DRIFT:    {_DIM}embeddings not available — marker-only mode{_R}")
+        click.echo(f"DRIFT:    {_YEL}not available{_R}  {_DIM}→  pip install \"radogast[embed]\"{_R}")
 
     # milestone
     if report.active_milestone:

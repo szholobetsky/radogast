@@ -42,7 +42,8 @@ pip install -e ".[embed]"
 
 radogast works standalone — the only required dependencies are `click`, `numpy`, `pyyaml`,
 and `rouge-score`. Embedding-based drift detection requires the `[embed]` extra
-(`sentence-transformers`); without it, radogast falls back to marker-word analysis only.
+(`sentence-transformers`, ~500 MB); without it, radogast falls back to marker-word analysis only.
+If drift detection is unavailable, the output shows the install command directly.
 
 **[yasna](https://github.com/szholobetsky/yasna) is strongly recommended.**
 Without it, radogast can still analyze sessions — but you have to know the exact path to
