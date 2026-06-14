@@ -50,7 +50,42 @@ def _bar(value: float, width: int = 12) -> str:
     return _FULL * filled + _EMPTY * (width - filled)
 
 
-def _print_report(report: RadogastReport, target_goal: str, fmt: str):
+def _print_summary(report: RadogastReport, milestones: list) -> None:
+    """Print a compact machine-readable summary line for gate/script consumption."""
+    parts = ["SUMMARY"]
+
+    if report.drift_angle is not None:
+        drift_pct = int(min(report.drift_angle / 40.0 * 100, 100))
+        parts.append(f"Drift:{drift_pct}%")
+    else:
+        parts.append("Drift:N/A")
+
+    for ms in milestones:
+        short = ms.name[:15].replace(" ", "_")
+        if ms.name == report.active_milestone:
+            parts.append(f"{short}:Complete")
+        else:
+            mt = report.milestone_trends.get(ms.name, {})
+            markers = mt.get("markers", {})
+            if markers:
+                seen = sum(1 for mtr in markers.values() if mtr.get("trend", "absent") != "absent")
+                pct = int(seen / len(markers) * 100)
+                parts.append(f"{short}:{pct}%")
+            elif report.milestone_votes.get(ms.name, 0) > 0:
+                parts.append(f"{short}:Complete")
+            else:
+                parts.append(f"{short}:0%")
+
+    total_pct = int(report.coverage_ratio * 100)
+    # POSITIVE/NEGATIVE verdict: all milestones complete + no verification failures
+    all_hit = (report.active_milestone == milestones[-1].name if milestones else True)
+    verdict = "POSITIVE" if (all_hit and not report.verification_fails) else "NEGATIVE"
+    parts.append(f"Total:{total_pct}%")
+    parts.append(verdict)
+    click.echo(" ".join(parts))
+
+
+def _print_report(report: RadogastReport, target, fmt: str):
     if fmt == "json":
         out = {
             "drift_angle": report.drift_angle,
@@ -68,6 +103,9 @@ def _print_report(report: RadogastReport, target_goal: str, fmt: str):
         }
         click.echo(json.dumps(out, ensure_ascii=False, indent=2))
         return
+
+    target_goal = target.goal if hasattr(target, "goal") else str(target)
+    target_milestones = target.milestones if hasattr(target, "milestones") else []
 
     # text output
     click.echo(f"\n{_CYA}[radogast]{_R} target: {target_goal[:80]}")
@@ -177,6 +215,8 @@ def _print_report(report: RadogastReport, target_goal: str, fmt: str):
         for sg in report.suggestions:
             click.echo(f"  {_ARR} {sg}")
 
+    # machine-readable summary line (always last, parseable by autocheck/gates/scripts)
+    _print_summary(report, target_milestones)
     click.echo()
 
 
@@ -379,7 +419,7 @@ def analyze_cmd(target_path, input_path, agent, fmt, cfg_path):
         sys.exit(1)
 
     report = analyze(messages, target, cfg)
-    _print_report(report, target.goal, fmt)
+    _print_report(report, target, fmt)
 
     if report.drift_status == "critical" or report.verification_fails:
         sys.exit(2)
@@ -454,7 +494,7 @@ def watch(target_path, watch_dir, interval, fmt):
                         messages = load_messages(str(fpath))
                         if messages:
                             report = analyze(messages, target, cfg)
-                            _print_report(report, target.goal, fmt)
+                            _print_report(report, target, fmt)
                         else:
                             click.echo(f"  [skip] no messages in {fpath.name}", err=True)
                     except Exception as e:
