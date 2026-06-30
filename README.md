@@ -1,4 +1,4 @@
-﻿![radogast](images/radogast.png)
+﻿![radogast](https://raw.githubusercontent.com/szholobetsky/simrgl/main/images/logo/radogast.png)
 
 # Radogast — Context Drift Monitor
 
@@ -161,7 +161,7 @@ SUGGESTED:
 
 ## Part of the SIMARGL toolkit
 
-radogast is one of six tools that together form an **intellectual development support system**:
+radogast is one of seven tools that together form an **intellectual development support system**:
 
 | Tool | Role |
 |---|---|
@@ -171,6 +171,7 @@ radogast is one of six tools that together form an **intellectual development su
 | **[yasna](https://github.com/szholobetsky/yasna)** | Session memory — indexes conversations from all AI agents so you can find what was discussed, when, and where |
 | **[radogast](https://github.com/szholobetsky/radogast)** | Context drift monitor — measures how far an AI agent's conversation has drifted from the original task |
 | **[vyrii](https://github.com/szholobetsky/vyrii)** | Local AI web UI — chat, translate, web research, RAG, and file management via Gradio; powered by Ollama or any OpenAI-compatible backend |
+| **[syryn](https://github.com/szholobetsky/syryn)** | Bluetooth identity beacon — returns hostname, mDNS, and active network interfaces for headless devices |
 
 - **simargl** answers: *what code is related to this task?*
 - **svitovyd** answers: *how is the code structured and what depends on what?*
@@ -178,6 +179,7 @@ radogast is one of six tools that together form an **intellectual development su
 - **yasna** answers: *where did I already discuss this?*
 - **radogast** answers: *is the AI agent still on track toward the goal?*
 - **vyrii** answers: *how do I access all of this through a browser?*
+- **syryn** answers: *what is the address of this headless device?*
 
 Together they cover the full development loop: understand the codebase, find relevant history, work with AI locally, remember what was decided, and verify the context stays on target.
 
