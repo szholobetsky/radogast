@@ -1,4 +1,4 @@
-﻿![radogast](https://raw.githubusercontent.com/szholobetsky/simrgl/main/images/logo/radogast.png)
+![radogast](https://raw.githubusercontent.com/szholobetsky/simrgl/main/images/logo/radogast.png)
 
 # Radogast — Context Drift Monitor
 
