@@ -72,7 +72,7 @@ def analyze(
             contents, target.goal, target.key_terms,
             embed_model, max_window=max(windows),
         )
-        _step(f"drift: {drift_result.get('angle', 'n/a')}°  status: {drift_result['status']}")
+        _step(f"drift: {drift_result.get('angle', 'n/a')}deg  status: {drift_result['status']}")
     else:
         drift_result = {"angle": None, "status": "disabled", "available": False}
 
@@ -175,20 +175,20 @@ def _build_suggestions(cov, bal, drift_result, vote_result, trans_warnings, bias
     s = []
     absent = [t for t, st in cov.items() if st == "absent"]
     if absent:
-        s.append(f"missing from context: {', '.join(absent[:3])} — add definitions or examples")
+        s.append(f"missing from context: {', '.join(absent[:3])} - add definitions or examples")
     undefined = [t for t, st in cov.items() if st == "mentioned"]
     if undefined:
-        s.append(f"mentioned but not defined: {', '.join(undefined[:3])} — add explicit definitions")
+        s.append(f"mentioned but not defined: {', '.join(undefined[:3])} - add explicit definitions")
     if bal["bias"] > bias_thresh and bal["biased_toward"]:
         s.append(
             f"context biased toward '{bal['biased_toward']}' (ratio {bal['bias']}x) "
-            f"— reduce or rebalance with other key terms"
+            f"- reduce or rebalance with other key terms"
         )
     if drift_result.get("status") == "warning":
-        s.append(f"drift {drift_result['angle']}° — context drifting from target, consider refocusing")
+        s.append(f"drift {drift_result['angle']}deg - context drifting from target, consider refocusing")
     elif drift_result.get("status") == "critical":
         s.append(
-            f"drift {drift_result['angle']}° — CRITICAL: context has diverged significantly from target"
+            f"drift {drift_result['angle']}deg - CRITICAL: context has diverged significantly from target"
         )
     s.extend(trans_warnings)
     for term, count in (oos_hits or {}).items():
@@ -197,7 +197,7 @@ def _build_suggestions(cov, bal, drift_result, vote_result, trans_warnings, bias
         if trend == "declining":
             continue  # was mentioned but fading — no alert
         if term in (oos_recent or []) or trend == "growing":
-            s.append(f"OUT-OF-SCOPE '{term}' — {count}x, trend: {trend} — refocus away from this topic")
+            s.append(f"OUT-OF-SCOPE '{term}' - {count}x, trend: {trend} - refocus away from this topic")
         else:
-            s.append(f"out-of-scope '{term}' — {count}x in context")
+            s.append(f"out-of-scope '{term}' - {count}x in context")
     return s

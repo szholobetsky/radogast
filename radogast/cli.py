@@ -115,9 +115,9 @@ def _print_report(report: RadogastReport, target, fmt: str):
     ds = report.drift_status
     dc = _STATUS_COLOR.get(ds, "")
     if report.drift_angle is not None:
-        click.echo(f"DRIFT:    {dc}{report.drift_angle:5.1f}°  {ds}{_R}")
+        click.echo(f"DRIFT:    {dc}{report.drift_angle:5.1f}deg  {ds}{_R}")
     else:
-        click.echo(f"DRIFT:    {_YEL}not available{_R}  {_DIM}→  pip install \"radogast[embed]\"{_R}")
+        click.echo(f"DRIFT:    {_YEL}not available{_R}  {_DIM}{_ARR}  pip install \"radogast[embed]\"{_R}")
 
     # milestone
     if report.active_milestone:
@@ -129,8 +129,8 @@ def _print_report(report: RadogastReport, target, fmt: str):
     # coverage
     click.echo(f"\nTERM COVERAGE  ({len([v for v in report.term_coverage.values() if v=='defined'])}"
                f"/{len(report.term_coverage)} defined)  ROUGE-1={report.rouge1:.2f}")
-    _TREND_ARROW = {"growing": "↑", "declining": "↓", "stable": "→",
-                    "peak_early": "↘", "peak_late": "↗", "absent": " "}
+    _TREND_ARROW = {"growing": _u("↑", "^"), "declining": _u("↓", "v"), "stable": _u("→", "-"),
+                    "peak_early": _u("↘", "\\"), "peak_late": _u("↗", "/"), "absent": " "}
     for term, status in report.term_coverage.items():
         c = _COV_COLOR.get(status, "")
         tr = report.term_trends.get(term, {})
@@ -152,7 +152,7 @@ def _print_report(report: RadogastReport, target, fmt: str):
     if has_defs:
         click.echo(f"\nGLOSSARY ({len(has_defs)}/{len(report.glossary)} terms):")
         for term, defn in list(has_defs.items())[:5]:
-            snippet = (defn[:90] + "…") if defn and len(defn) > 90 else defn
+            snippet = (defn[:90] + "...") if defn and len(defn) > 90 else defn
             click.echo(f"  {term}: {_DIM}{snippet}{_R}")
 
     # milestones tree
@@ -224,7 +224,7 @@ def _print_report(report: RadogastReport, target, fmt: str):
 
 @click.group()
 def main():
-    """Radogast — context drift monitor for AI agent sessions."""
+    """Radogast - context drift monitor for AI agent sessions."""
 
 
 # ── init ──────────────────────────────────────────────────────────────────────
@@ -268,7 +268,7 @@ def init_cmd(init_dir):
     if raw_ms:
         for ms_name in [m.strip() for m in raw_ms.split(",") if m.strip()]:
             click.echo(f"\n  Milestone '{ms_name}':")
-            click.echo(f"  Marker words — words that appear in messages when this stage is active.")
+            click.echo(f"  Marker words - words that appear in messages when this stage is active.")
             raw_markers = click.prompt(f"    Markers for '{ms_name}' (comma-separated, or Enter to skip)", default="").strip()
             markers = [m.strip() for m in raw_markers.split(",") if m.strip()] if raw_markers else []
             milestones.append(Milestone(name=ms_name, markers=markers))
@@ -317,7 +317,7 @@ def clear_cmd(clear_dir, yes):
     task_file = Path(clear_dir).resolve() / ".radogast" / "task.yaml"
 
     if not task_file.exists():
-        click.echo("[radogast] no task.yaml found — nothing to clear.")
+        click.echo("[radogast] no task.yaml found - nothing to clear.")
         return
 
     if not yes:
@@ -377,7 +377,7 @@ def _find_recent_session(agent: str | None = None) -> Path | None:
 @click.option("--input", "-i", "input_path", default=None,
               help="Path to messages file. Default: most recent yasna session.")
 @click.option("--agent", "-a", default=None,
-              help="Filter session search by agent (claude, gemini, …).")
+              help="Filter session search by agent (claude, gemini, etc).")
 @click.option("--format", "-f", "fmt", default="text",
               type=click.Choice(["text", "json"]), help="Output format.")
 @click.option("--config", "cfg_path", default=None, help="Config YAML override.")
@@ -461,7 +461,7 @@ def watch(target_path, watch_dir, interval, fmt):
     watch_path.mkdir(parents=True, exist_ok=True)
     last_mtime: dict[Path, float] = {}
 
-    click.echo(f"[radogast] interval: {interval}s — Ctrl+C to stop", err=True)
+    click.echo(f"[radogast] interval: {interval}s - Ctrl+C to stop", err=True)
     tick = 0
     _SPIN = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏" if _UTF8 else "-\\|/"
     try:
@@ -471,7 +471,7 @@ def watch(target_path, watch_dir, interval, fmt):
                 try:
                     subprocess.run(["yasna", "index"], capture_output=True, timeout=30)
                 except FileNotFoundError:
-                    click.echo("\n[radogast] warning: yasna not found — skipping index step", err=True)
+                    click.echo("\n[radogast] warning: yasna not found - skipping index step", err=True)
                     auto_yasna = False
                 except subprocess.TimeoutExpired:
                     click.echo("\n[radogast] warning: yasna index timed out", err=True)
@@ -525,7 +525,7 @@ def target_derive(prompt_text, output):
     yaml_text = target_to_yaml(t)
     if output:
         Path(output).write_text(yaml_text, encoding="utf-8")
-        click.echo(f"[radogast] target saved → {output}")
+        click.echo(f"[radogast] target saved {_ARR} {output}")
     else:
         click.echo(yaml_text)
 
@@ -545,9 +545,9 @@ def target_validate(target_path):
             issues.append("warning: no verification.mandatory_terms")
         if issues:
             for i in issues:
-                click.echo(f"  {'✗' if i.startswith('missing') else '!'} {i}")
+                click.echo(f"  {_CROSS if i.startswith('missing') else '!'} {i}")
         else:
-            click.echo(f"[radogast] {target_path} — valid ✓")
+            click.echo(f"[radogast] {target_path} - valid {_TICK}")
             click.echo(f"  goal: {t.goal[:80]}")
             click.echo(f"  key_terms: {len(t.key_terms)}")
             click.echo(f"  milestones: {len(t.milestones)}")
